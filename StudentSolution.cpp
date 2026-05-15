@@ -1,5 +1,159 @@
 #include "acequia_manager.h"
-#include <iostream>
+#include <vector>
+#include <algorithm>
+
+//not 100% consistent but still solved 8/10 times in testing
+
+enum RegionID { NORTH = 0, SOUTH = 1, EAST = 2 };
+
+const double EPS = 0.001;
+const double BUFFER = 0.15;
+const double MAX_PER_HOUR = 0.36;
+
+double deficit(Region* r)
+{
+    double d = r->waterNeed - r->waterLevel;
+
+    if (d <= 0.0)
+        return 0.0;
+
+    // intentionally overshoot slightly
+    return d + BUFFER;
+}
+
+double surplus(Region* r)
+{
+    return std::max(0.0, r->waterLevel - r->waterNeed);
+}
+
+double flowFor(double amount)
+{
+    double f = amount / MAX_PER_HOUR;
+
+    if (f > 1.0)
+        f = 1.0;
+
+    if (f < 0.0)
+        f = 0.0;
+
+    return f;
+}
+
+void resetCanals(const std::vector<Canal*>& canals)
+{
+    for (auto c : canals)
+    {
+        c->toggleOpen(false);
+        c->setFlowRate(0.0);
+    }
+}
+
+void solveProblems(AcequiaManager& manager)
+{
+    auto regions = manager.getRegions();
+    auto canals = manager.getCanals();
+
+    Region* N = regions[0];
+    Region* S = regions[1];
+    Region* E = regions[2];
+
+    Canal* NtoS = canals[0];
+    Canal* StoE = canals[1];
+    Canal* NtoE = canals[2];
+    Canal* EtoN = canals[3];
+
+    while (!manager.solved() &&
+           manager.hour < manager.SimulationMax)
+    {
+        resetCanals(canals);
+
+        double dN = deficit(N);
+        double dS = deficit(S);
+        double dE = deficit(E);
+
+        double sN = surplus(N);
+        double sS = surplus(S);
+        double sE = surplus(E);
+
+        //
+        // NORTH DEFICIT
+        //
+        if (dN > EPS)
+        {
+            // East directly helps North
+            if (sE > EPS)
+            {
+                double amt = std::min(dN, MAX_PER_HOUR);
+
+                EtoN->toggleOpen(true);
+                EtoN->setFlowRate(flowFor(amt));
+            }
+
+            // South can help through East
+            else if (sS > EPS)
+            {
+                double amt = std::min(dN, MAX_PER_HOUR);
+
+                StoE->toggleOpen(true);
+                StoE->setFlowRate(flowFor(amt));
+
+                EtoN->toggleOpen(true);
+                EtoN->setFlowRate(flowFor(amt));
+            }
+        }
+
+        //
+        // SOUTH DEFICIT
+        //
+        if (dS > EPS)
+        {
+            // North directly helps South
+            if (sN > EPS)
+            {
+                double amt = std::min(dS, MAX_PER_HOUR);
+
+                NtoS->toggleOpen(true);
+                NtoS->setFlowRate(flowFor(amt));
+            }
+
+            // East helps South via North
+            else if (sE > EPS)
+            {
+                double amt = std::min(dS, MAX_PER_HOUR);
+
+                EtoN->toggleOpen(true);
+                EtoN->setFlowRate(flowFor(amt));
+
+                NtoS->toggleOpen(true);
+                NtoS->setFlowRate(flowFor(amt));
+            }
+        }
+
+        //
+        // EAST DEFICIT
+        //
+        if (dE > EPS)
+        {
+            if (sN > EPS)
+            {
+                double amt = std::min(dE, MAX_PER_HOUR);
+
+                NtoE->toggleOpen(true);
+                NtoE->setFlowRate(flowFor(amt));
+            }
+
+            if (sS > EPS)
+            {
+                double amt = std::min(dE, MAX_PER_HOUR);
+
+                StoE->toggleOpen(true);
+                StoE->setFlowRate(flowFor(amt));
+            }
+        }
+
+        manager.nexthour();
+    }
+}
 
 /*Instructions for this problem:
 
@@ -89,6 +243,7 @@ void solveProblems(AcequiaManager& manager)
 Setting multiple canals at a particular time instance
 */
 
+/*
 void solveProblems(AcequiaManager& manager)
 {
 	auto canals = manager.getCanals();
@@ -116,6 +271,8 @@ void solveProblems(AcequiaManager& manager)
 		manager.nexthour();
 	}
 }
+
+*/
 
 
 
